@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Configures the Camel Context-->
+
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xsi:schemaLocation="
+       http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd
+       http://camel.apache.org/schema/spring http://camel.apache.org/schema/spring/camel-spring.xsd">
+	<bean id="myds" class="org.springframework.jdbc.datasource.DriverManagerDataSource">
+		<property name="driverClassName" value= "oracle.jdbc.pool.OracleDataSource" />
+		<property name="url" value="jdbc:oracle:thin:@t24-dev2:1521:T24ENV"/>
+		<property name="username" value="T24Read"/>
+		<property name="password" value="admin"/>
+	</bean>
+	<bean id="rowProcessor" class="com.ZITOUNABank.Cold_Path.RProcessor">
+	</bean>
+
+
+
+	<bean id="mongoBean" class="com.mongodb.MongoClient">
+		<constructor-arg name="host" value="10.101.248.229"/>
+		<constructor-arg name="port" value="27017"/>
+	</bean>
+	<!--  <bean id="myPool" class="java.util.concurrent.Executors" factory-method="newFixedThreadPool">-->
+	<!--    <constructor-arg index="0" value="1"/>-->
+	<!--  </bean>-->
+	<camelContext xmlns="http://camel.apache.org/schema/spring">
+		<jmxAgent id="agent"
+		          connectorPort="5072"
+		          createConnector="true"
+		          serviceUrlPath="/jmxrmi/camel"
+		/>
+		<threadPool id="myPool" poolSize="15" maxPoolSize="30" maxQueueSize="1000" threadName="cool" rejectedPolicy="CallerRuns"/>
+
+		<route streamCache="true" >
+			<from uri="timer://foo?repeatCount=1"/>
+
+
+			<setBody>
+				<constant>SELECT * FROM T24_PROD.FBNK_{{table_name}}</constant>
+			</setBody>
+			<to id="sql" uri="jdbc:myds?outputType=StreamList"/>
+			<split streaming="true" stopOnException="true" executorServiceRef="myPool" parallelProcessing="true">
+				<simple>${in.body}</simple>
+				<process ref="rowProcessor" />
+<!--				<to id="stream" uri="stream:out"/>-->
+				<to uri="mongodb3:mongoBean?database={{mongodb.database}}&amp;collection={{table_name}}&amp;operation=insert"/>
+			</split>
+		</route>
+	</camelContext>
+</beans>
